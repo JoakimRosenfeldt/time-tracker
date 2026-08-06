@@ -142,6 +142,17 @@ export default function App(): JSX.Element {
     [periodEntries]
   )
 
+  // ponytail: make Everhour inclusion visible; both sources already feed periodTotal
+  const periodBySource = useMemo(() => {
+    let manual = 0
+    let everhour = 0
+    for (const e of periodEntries) {
+      if (e.source === 'everhour') everhour += e.seconds
+      else manual += e.seconds
+    }
+    return { manual, everhour }
+  }, [periodEntries])
+
   const milestoneTotals = useMemo(() => {
     const map = new Map<string, number>()
     for (const e of periodEntries) {
@@ -169,7 +180,7 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 p-6">
+    <div className="mx-auto flex max-w-6xl flex-col gap-4 p-6">
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Time Tracker</h1>
@@ -518,9 +529,15 @@ export default function App(): JSX.Element {
             </div>
 
             <div className="flex items-baseline justify-between gap-4 border-b pb-3">
-              <p className="text-sm text-muted-foreground">
-                {periodFrom} → {periodTo} · {periodEntries.length} entries
-              </p>
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">
+                  {periodFrom} → {periodTo} · {periodEntries.length} entries
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Manual {formatDuration(periodBySource.manual)} · Everhour{' '}
+                  {formatDuration(periodBySource.everhour)}
+                </p>
+              </div>
               <p className="text-2xl font-semibold tabular-nums">{formatDuration(periodTotal)}</p>
             </div>
 

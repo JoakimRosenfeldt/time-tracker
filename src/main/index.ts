@@ -19,11 +19,12 @@ function persist(): AppState {
 function createWindow(): void {
   nativeTheme.themeSource = 'dark'
   // macOS Dock icon comes from Assets.car + CFBundleIconName (see scripts/brand-electron.mjs)
+  // ponytail: height = titlebar (~28) + p-6 + header + tabs + 532px Issues panels
   const win = new BrowserWindow({
-    width: 1100,
-    height: 720,
+    width: 800,
+    height: 760,
     minWidth: 800,
-    minHeight: 560,
+    minHeight: 760,
     title: 'Time Tracker',
     backgroundColor: '#1a1d24',
     webPreferences: {
@@ -152,6 +153,4 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+app.on('window-all-closed', () => app.quit())
