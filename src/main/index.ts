@@ -22,9 +22,9 @@ function createWindow(): void {
   // ponytail: height = titlebar (~28) + p-6 + header + tabs + 532px Issues panels
   const win = new BrowserWindow({
     width: 800,
-    height: 760,
+    height: 763,
     minWidth: 800,
-    minHeight: 760,
+    minHeight: 763,
     title: 'Time Tracker',
     backgroundColor: '#1a1d24',
     webPreferences: {
