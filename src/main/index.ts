@@ -18,8 +18,7 @@ function persist(): AppState {
 
 function createWindow(): void {
   nativeTheme.themeSource = 'dark'
-  const icon = join(__dirname, '../../resources/icon.png')
-  if (process.platform === 'darwin') app.dock?.setIcon(icon)
+  // macOS Dock icon comes from Assets.car + CFBundleIconName (see scripts/brand-electron.mjs)
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
@@ -27,7 +26,6 @@ function createWindow(): void {
     minHeight: 560,
     title: 'Time Tracker',
     backgroundColor: '#1a1d24',
-    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
