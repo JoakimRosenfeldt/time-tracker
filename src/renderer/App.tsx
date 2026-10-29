@@ -32,6 +32,17 @@ function startOfMonth(): string {
   return isoDate(d)
 }
 
+function nextDay(date: string): string {
+  const d = new Date(date)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return isoDate(d)
+}
+
+function currentPeriodStart(ends: string[]): string {
+  const last = ends[ends.length - 1]
+  return last ? nextDay(last) : startOfMonth()
+}
+
 function totalsByIssue(entries: TimeEntry[]): Map<string, number> {
   const map = new Map<string, number>()
   for (const e of entries) map.set(e.issueIdentifier, (map.get(e.issueIdentifier) ?? 0) + e.seconds)
@@ -57,27 +68,17 @@ export default function App(): JSX.Element {
   const [editComment, setEditComment] = useState('')
   const [periodFrom, setPeriodFrom] = useState(startOfWeek)
   const [periodTo, setPeriodTo] = useState(today)
+  const [periodEnd, setPeriodEnd] = useState(today)
 
   useEffect(() => {
-    void window.api.getState().then(async (s) => {
+    void window.api.getState().then((s) => {
       setApiKey(s.settings.linearApiKey)
       setTeamKey(s.settings.teamKey)
-      // ponytail: older syncs omitted milestone; refresh once if key exists
-      const needsMilestone =
-        Boolean(s.settings.linearApiKey) &&
-        s.issues.length > 0 &&
-        !s.issues.some((i) => i.milestone)
-      if (needsMilestone) {
-        try {
-          const next = await window.api.refreshIssues()
-          setState(next)
-          return
-        } catch {
-          // fall through to cached state
-        }
-      }
+      setPeriodFrom(currentPeriodStart(s.salaryPeriodEnds))
       setState(s)
     })
+    // main process re-syncs Linear on startup and every few minutes
+    return window.api.onStateChanged(setState)
   }, [])
 
   const totals = useMemo(() => totalsByIssue(state?.entries ?? []), [state?.entries])
@@ -276,7 +277,26 @@ export default function App(): JSX.Element {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold">{selected.identifier}</h2>
-                    <Badge variant="outline">{selected.state}</Badge>
+                    {state.workflowStates.length && selected.url ? (
+                      <select
+                        aria-label="Status"
+                        className="h-7 rounded-md border bg-background px-2 text-sm"
+                        disabled={busy}
+                        value={state.workflowStates.find((s) => s.name === selected.state)?.id ?? ''}
+                        onChange={(e) => {
+                          const stateId = e.target.value
+                          void run(async () => setState(await window.api.setIssueState(selected.id, stateId)))
+                        }}
+                      >
+                        {state.workflowStates.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Badge variant="outline">{selected.state}</Badge>
+                    )}
                     {selected.milestone && <Badge variant="secondary">{selected.milestone}</Badge>}
                   </div>
                   <p className="text-sm text-muted-foreground">{selected.title}</p>
@@ -496,6 +516,32 @@ export default function App(): JSX.Element {
                   size="sm"
                   variant="outline"
                   onClick={() => {
+                    setPeriodFrom(currentPeriodStart(state.salaryPeriodEnds))
+                    setPeriodTo(today())
+                  }}
+                >
+                  Salary period
+                </Button>
+                {state.salaryPeriodEnds.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const ends = state.salaryPeriodEnds
+                      const dates = state.entries.map((e) => e.date).sort()
+                      setPeriodFrom(ends.length > 1 ? nextDay(ends[ends.length - 2]) : (dates[0] ?? startOfMonth()))
+                      setPeriodTo(ends[ends.length - 1])
+                    }}
+                  >
+                    Previous period
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
                     setPeriodFrom(startOfWeek())
                     setPeriodTo(today())
                   }}
@@ -527,6 +573,54 @@ export default function App(): JSX.Element {
                 </Button>
               </div>
             </div>
+
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void run(async () => {
+                  const next = await window.api.setSalaryPeriodEnds([...state.salaryPeriodEnds, periodEnd])
+                  setState(next)
+                  setPeriodFrom(currentPeriodStart(next.salaryPeriodEnds))
+                  setPeriodTo(today())
+                })
+              }}
+            >
+              <div className="grid gap-1.5">
+                <Label htmlFor="periodEnd">Salary period ends on</Label>
+                <Input
+                  id="periodEnd"
+                  type="date"
+                  value={periodEnd}
+                  onChange={(e) => setPeriodEnd(e.target.value)}
+                  required
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={busy}>
+                End salary period
+              </Button>
+              {state.salaryPeriodEnds.length > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const next = await window.api.setSalaryPeriodEnds(state.salaryPeriodEnds.slice(0, -1))
+                      setState(next)
+                      setPeriodFrom(currentPeriodStart(next.salaryPeriodEnds))
+                      setPeriodTo(today())
+                    })
+                  }
+                >
+                  Undo last ({state.salaryPeriodEnds[state.salaryPeriodEnds.length - 1]})
+                </Button>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Current period started {currentPeriodStart(state.salaryPeriodEnds)}
+              </p>
+            </form>
 
             <div className="flex items-baseline justify-between gap-4 border-b pb-3">
               <div className="min-w-0">
