@@ -1,4 +1,4 @@
-import type { LinearIssue } from '../shared/types'
+import type { LinearIssue, WorkflowState } from '../shared/types'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
 
@@ -73,4 +73,41 @@ export async function fetchTeamIssues(apiKey: string, teamKey: string): Promise<
   } while (after)
 
   return issues
+}
+
+export async function fetchTeamStates(apiKey: string, teamKey: string): Promise<WorkflowState[]> {
+  const data = await gql<{
+    teams: { nodes: { states: { nodes: (WorkflowState & { position: number })[] } }[] }
+  }>(
+    apiKey,
+    `query($teamKey: String!) {
+      teams(filter: { key: { eq: $teamKey } }) {
+        nodes { states { nodes { id name type position } } }
+      }
+    }`,
+    { teamKey }
+  )
+  const states = data.teams.nodes[0]?.states.nodes ?? []
+  return states.sort((a, b) => a.position - b.position).map(({ id, name, type }) => ({ id, name, type }))
+}
+
+export async function updateIssueState(
+  apiKey: string,
+  issueId: string,
+  stateId: string
+): Promise<{ name: string; type: string }> {
+  const data = await gql<{
+    issueUpdate: { success: boolean; issue: { state: { name: string; type: string } } }
+  }>(
+    apiKey,
+    `mutation($id: String!, $stateId: String!) {
+      issueUpdate(id: $id, input: { stateId: $stateId }) {
+        success
+        issue { state { name type } }
+      }
+    }`,
+    { id: issueId, stateId }
+  )
+  if (!data.issueUpdate.success) throw new Error('Linear rejected the status change')
+  return data.issueUpdate.issue.state
 }

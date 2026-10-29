@@ -19,6 +19,12 @@ export type LinearIssue = {
   milestone?: string
 }
 
+export type WorkflowState = {
+  id: string
+  name: string
+  type: string
+}
+
 export type Settings = {
   linearApiKey: string
   teamKey: string
@@ -27,8 +33,11 @@ export type Settings = {
 export type AppState = {
   settings: Settings
   issues: LinearIssue[]
+  workflowStates: WorkflowState[]
   entries: TimeEntry[]
   issuesUpdatedAt?: string
+  /** Last day (inclusive) of each closed salary period, sorted ascending */
+  salaryPeriodEnds: string[]
 }
 
 export type AddEntryInput = {
@@ -54,5 +63,7 @@ export const defaultSettings = (): Settings => ({
 export const emptyState = (): AppState => ({
   settings: defaultSettings(),
   issues: [],
-  entries: []
+  workflowStates: [],
+  entries: [],
+  salaryPeriodEnds: []
 })

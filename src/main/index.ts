@@ -4,7 +4,7 @@ import { join } from 'path'
 import { parseDuration } from '../shared/duration'
 import { parseEverhourTimeFile } from '../shared/everhour'
 import type { AddEntryInput, AppState, Settings, TimeEntry, UpdateEntryInput } from '../shared/types'
-import { fetchTeamIssues } from './linear'
+import { fetchTeamIssues, fetchTeamStates, updateIssueState } from './linear'
 import { loadState, saveState } from './store'
 
 app.setName('Time Tracker')
@@ -14,6 +14,32 @@ let state: AppState = loadState()
 function persist(): AppState {
   saveState(state)
   return state
+}
+
+const SYNC_INTERVAL_MS = 5 * 60 * 1000
+
+async function syncIssues(): Promise<AppState> {
+  const { linearApiKey, teamKey } = state.settings
+  if (!linearApiKey) throw new Error('Set a Linear API key in Settings first')
+  if (!teamKey) throw new Error('Set a team key in Settings first')
+  const [issues, workflowStates] = await Promise.all([
+    fetchTeamIssues(linearApiKey, teamKey),
+    fetchTeamStates(linearApiKey, teamKey)
+  ])
+  state.issues = issues
+  state.workflowStates = workflowStates
+  state.issuesUpdatedAt = new Date().toISOString()
+  return persist()
+}
+
+async function backgroundSync(): Promise<void> {
+  if (!state.settings.linearApiKey) return
+  try {
+    await syncIssues()
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('stateChanged', state)
+  } catch (e) {
+    console.error('Linear sync failed', e)
+  }
 }
 
 function createWindow(): void {
@@ -70,12 +96,19 @@ app.whenReady().then(() => {
     return persist()
   })
 
-  ipcMain.handle('refreshIssues', async () => {
-    const { linearApiKey, teamKey } = state.settings
-    if (!linearApiKey) throw new Error('Set a Linear API key in Settings first')
-    if (!teamKey) throw new Error('Set a team key in Settings first')
-    state.issues = await fetchTeamIssues(linearApiKey, teamKey)
-    state.issuesUpdatedAt = new Date().toISOString()
+  ipcMain.handle('refreshIssues', syncIssues)
+
+  ipcMain.handle('setIssueState', async (_e, issueId: string, stateId: string) => {
+    const issue = state.issues.find((i) => i.id === issueId)
+    if (!issue) throw new Error('Issue not found')
+    const next = await updateIssueState(state.settings.linearApiKey, issueId, stateId)
+    issue.state = next.name
+    issue.stateType = next.type
+    return persist()
+  })
+
+  ipcMain.handle('setSalaryPeriodEnds', (_e, ends: string[]) => {
+    state.salaryPeriodEnds = [...new Set(ends)].sort()
     return persist()
   })
 
@@ -148,6 +181,8 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  void backgroundSync()
+  setInterval(() => void backgroundSync(), SYNC_INTERVAL_MS)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
